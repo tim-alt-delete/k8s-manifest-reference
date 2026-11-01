@@ -1,0 +1,28 @@
+# GRPCRoute (Gateway API, standard channel): routes gRPC by service/method.
+# Requires an HTTPS (HTTP/2) listener that allows GRPCRoute.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GRPCRoute
+metadata:
+  name: orders
+  namespace: example
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https
+  hostnames: ["grpc.example.com"]
+  rules:
+    - matches:
+        - method:
+            type: Exact
+            service: orders.v1.OrderService # fully qualified gRPC service
+            method: GetOrder # omit to match every method of the service
+      backendRefs:
+        - name: orders
+          port: 9090
+    - matches:
+        - method:
+            service: orders.v1.OrderService # all other methods
+      backendRefs:
+        - name: orders
+          port: 9090

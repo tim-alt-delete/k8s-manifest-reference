@@ -34,6 +34,13 @@ Secret values are fake placeholders.
 | networking | EndpointSlice | [networking/endpointslice.yaml](networking/endpointslice.yaml) |
 | networking | Ingress, IngressClass | [networking/ingress.yaml](networking/ingress.yaml) |
 | networking | NetworkPolicy | [networking/networkpolicy.yaml](networking/networkpolicy.yaml) |
+| networking | GatewayClass (Gateway API) | [networking/gatewayclass.yaml](networking/gatewayclass.yaml) |
+| networking | Gateway (HTTP, HTTPS, TLS passthrough listeners) | [networking/gateway.yaml](networking/gateway.yaml) |
+| networking | HTTPRoute (HTTP-to-HTTPS redirect, matches, filters, canary, timeouts) | [networking/httproute.yaml](networking/httproute.yaml) |
+| networking | GRPCRoute | [networking/grpcroute.yaml](networking/grpcroute.yaml) |
+| networking | TLSRoute | [networking/tlsroute.yaml](networking/tlsroute.yaml) |
+| networking | BackendTLSPolicy | [networking/backendtlspolicy.yaml](networking/backendtlspolicy.yaml) |
+| networking | ReferenceGrant | [networking/referencegrant.yaml](networking/referencegrant.yaml) |
 | rbac | ServiceAccount | [rbac/serviceaccount.yaml](rbac/serviceaccount.yaml) |
 | rbac | Role | [rbac/role.yaml](rbac/role.yaml) |
 | rbac | ClusterRole | [rbac/clusterrole.yaml](rbac/clusterrole.yaml) |
@@ -55,7 +62,24 @@ Complete Pods focused on one topic, so they validate on their own.
 
 - `---` separates multiple variants in one file; each is introduced by a comment.
 - Workload controllers embed a Pod spec at `spec.template.spec`; see `workloads/pod.yaml`.
-- Not included: CRD-based kinds (Gateway API, VolumeSnapshot, cert-manager, ...).
+- Gateway API (standard channel, v1.7) is included; experimental kinds, VolumeSnapshot and
+  cert-manager are not.
+
+## Gateway API notes
+
+Gateway API is the successor to Ingress. It is a set of CRDs plus a controller you install
+yourself; the manifests are controller-neutral, with Envoy Gateway used for examples.
+
+- Install the CRDs: `kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.7.0/standard-install.yaml`
+- Platform team owns GatewayClass and Gateway (namespace `infra`); app teams own routes in their
+  namespace. Cross-namespace references need a ReferenceGrant.
+- Fields that only work with a specific controller are marked `CONTROLLER-SPECIFIC`
+  (`controllerName`, `parametersRef`, cloud LB annotations).
+- Extended features (e.g. RequestMirror) and some timeouts/retry options vary by controller.
+  Check `status.conditions` (Accepted, Programmed) on the Gateway and routes.
+- Policies such as rate limiting, auth and WAF are controller-specific CRDs, not covered here.
+- CRD schemas for validation come from the
+  [datreeio CRDs-catalog](https://github.com/datreeio/CRDs-catalog).
 
 ## Validation
 

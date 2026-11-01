@@ -1,0 +1,33 @@
+# ReferenceGrant (Gateway API, standard channel): permits references that cross namespaces.
+# Lives in the TARGET namespace (where the referenced object is), and names who may reference.
+# Without it, cross-namespace references are rejected.
+# --- Gateway in `infra` may use TLS Secrets in `example` (Gateway listener certificateRefs) ---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-to-tls-secret
+  namespace: example
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: infra
+  to:
+    - group: ""
+      kind: Secret
+      name: example-tls # optional; omit to allow all Secrets in the namespace
+---
+# --- HTTPRoutes in `example` may send traffic to Services in `shared-services` ---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-routes-from-example
+  namespace: shared-services
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: example
+  to:
+    - group: ""
+      kind: Service

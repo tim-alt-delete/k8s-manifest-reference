@@ -1,0 +1,18 @@
+# GatewayClass (Gateway API, standard channel): names a controller implementation.
+# Cluster-scoped; the Gateway API analogue of IngressClass. Typically installed by the
+# platform team. Gateway API is a set of CRDs, not core Kubernetes: install them first
+# (https://gateway-api.sigs.k8s.io/guides/) along with a controller.
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+spec:
+  # CONTROLLER-SPECIFIC: value is defined by the implementation. This is Envoy Gateway's.
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  description: Envoy Gateway, internet-facing
+  # CONTROLLER-SPECIFIC: points at an implementation config resource (kind/group vary).
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: prod-proxy-config
+    namespace: infra

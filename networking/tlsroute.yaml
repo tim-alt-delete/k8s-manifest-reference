@@ -1,0 +1,16 @@
+# TLSRoute (Gateway API, standard channel in v1.7): routes TLS by SNI hostname without
+# terminating it. Attaches to a listener with protocol: TLS and tls.mode: Passthrough.
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: passthrough
+  namespace: infra # same namespace as the Gateway (that listener uses allowedRoutes: Same)
+spec:
+  parentRefs:
+    - name: public
+      sectionName: tls-passthrough
+  hostnames: ["passthrough.example.com"] # matched against the TLS SNI
+  rules:
+    - backendRefs:
+        - name: secure-backend
+          port: 8443

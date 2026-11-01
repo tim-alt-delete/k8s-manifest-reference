@@ -1,0 +1,111 @@
+# HTTPRoute (Gateway API, standard channel): L7 routing from a Gateway listener to Services.
+# Owned by app teams. The route attaches to a Gateway via parentRefs; the Gateway's
+# allowedRoutes must permit it. Check `kubectl describe httproute` status for "Accepted".
+# --- 1. HTTP -> HTTPS redirect: attached ONLY to the plain-HTTP listener ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: example
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: http # binds to the `http` listener only, so app routes are not affected
+  hostnames: ["www.example.com"]
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            statusCode: 301 # 301 permanent | 302 temporary; port defaults to the scheme's
+---
+# --- 2. Application route: attached to the HTTPS listener ---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: web
+  namespace: example
+spec:
+  parentRefs:
+    - name: public
+      namespace: infra
+      sectionName: https
+  hostnames: ["www.example.com"] # must intersect the listener hostname
+  rules:
+    # Matching: within a rule, matches are OR'ed; conditions inside one match are AND'ed.
+    # Precedence: exact path > longest prefix > method > most headers > most query params.
+    - matches:
+        - path:
+            type: PathPrefix # Exact | PathPrefix | RegularExpression (extended; avoid)
+            value: /api
+          method: GET
+          headers:
+            - name: x-api-version
+              type: Exact
+              value: "2"
+          queryParams:
+            - name: format
+              type: Exact
+              value: json
+      filters:
+        - type: RequestHeaderModifier
+          requestHeaderModifier:
+            set:
+              - {name: x-forwarded-by, value: gateway}
+            add:
+              - {name: x-request-source, value: edge}
+            remove: [x-internal-debug]
+        - type: ResponseHeaderModifier
+          responseHeaderModifier:
+            set:
+              - {name: strict-transport-security, value: max-age=31536000; includeSubDomains}
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch # strip /api -> /
+              replacePrefixMatch: /
+      backendRefs:
+        - name: web
+          port: 80
+      timeouts:
+        request: 10s # total time for the client request
+        backendRequest: 5s # time for a single request to the backend
+      retry: # standard in recent releases; confirm controller support
+        attempts: 3
+        backoff: 100ms
+        codes: [502, 503, 504]
+    # Weighted split: canary releases and blue/green.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /checkout
+      backendRefs:
+        - name: checkout-stable
+          port: 80
+          weight: 90 # relative weights, not percentages
+        - name: checkout-canary
+          port: 80
+          weight: 10
+    # Mirror a copy of traffic to another backend (extended support: check your controller).
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /search
+      filters:
+        - type: RequestMirror
+          requestMirror:
+            backendRef:
+              name: search-shadow
+              port: 80
+      backendRefs:
+        - name: search
+          port: 80
+    # Catch-all
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: web
+          port: 80

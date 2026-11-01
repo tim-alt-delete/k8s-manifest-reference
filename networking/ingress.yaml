@@ -1,5 +1,6 @@
 # Ingress: HTTP(S) routing to Services. Requires an ingress controller.
-# (Gateway API is the successor but uses CRDs, not covered here.)
+# Gateway API (gatewayclass/gateway/httproute.yaml in this directory) is the successor to
+# Ingress; prefer it for new clusters.
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

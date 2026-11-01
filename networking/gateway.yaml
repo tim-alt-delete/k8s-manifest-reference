@@ -1,0 +1,68 @@
+# Gateway (Gateway API, standard channel): a load balancer / proxy instance with listeners.
+# Owned by the platform team; app teams attach routes (HTTPRoute...) to it.
+# Compared with Ingress: infra (Gateway) and routing (Routes) are separate resources,
+# so ownership and RBAC can be split, and routes can live in other namespaces.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: infra # shared infra namespace; routes in `example` attach cross-namespace
+spec:
+  gatewayClassName: envoy # see gatewayclass.yaml
+  # infrastructure: labels/annotations propagated to the generated LB Service / pods.
+  infrastructure:
+    labels:
+      example.com/tier: edge
+    annotations:
+      # CONTROLLER/CLOUD-SPECIFIC: e.g. internal LB, static IP behaviour
+      service.beta.kubernetes.io/aws-load-balancer-scheme: internet-facing
+  # addresses: request specific addresses (support is implementation-specific).
+  # addresses:
+  #   - type: IPAddress
+  #     value: 203.0.113.10
+  listeners:
+    # Plain HTTP listener: used only to redirect to HTTPS (see httproute.yaml).
+    - name: http # referenced by routes via parentRefs[].sectionName
+      protocol: HTTP
+      port: 80
+      hostname: "*.example.com" # wildcard matches one or more labels; omit for all hosts
+      allowedRoutes:
+        namespaces:
+          from: Selector # Same (default) | All | Selector
+          selector:
+            matchLabels:
+              example.com/gateway-access: public # label namespaces allowed to attach
+        kinds:
+          - kind: HTTPRoute
+    # HTTPS listener: TLS terminated at the Gateway.
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: "*.example.com"
+      tls:
+        mode: Terminate # Terminate | Passthrough (Passthrough requires TLSRoute)
+        certificateRefs: # kubernetes.io/tls Secrets; cross-namespace needs a ReferenceGrant
+          - kind: Secret
+            name: example-tls
+            namespace: example
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              example.com/gateway-access: public
+        kinds:
+          - kind: HTTPRoute
+          - kind: GRPCRoute
+    # TLS passthrough listener: encrypted traffic routed by SNI via TLSRoute, no termination.
+    - name: tls-passthrough
+      protocol: TLS
+      port: 8443
+      hostname: passthrough.example.com
+      tls:
+        mode: Passthrough
+      allowedRoutes:
+        namespaces:
+          from: Same
+        kinds:
+          - kind: TLSRoute

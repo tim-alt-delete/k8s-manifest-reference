@@ -1,0 +1,255 @@
+# Pod: smallest deployable unit. In practice create Pods via a controller
+# (Deployment, StatefulSet, Job...). The same spec appears under `spec.template.spec`.
+# --- Document 1: minimal pod ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-minimal
+  namespace: example
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+---
+# --- Document 2: pod with common spec fields ---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-full
+  namespace: example
+  labels:
+    app.kubernetes.io/name: pod-full # selected by Services / NetworkPolicies
+    app.kubernetes.io/component: web
+  annotations:
+    example.com/note: free-form, not used for selection
+spec:
+  serviceAccountName: app-sa # identity for the API; see rbac/serviceaccount.yaml
+  automountServiceAccountToken: false # don't mount the API token if unused
+  restartPolicy: Always # Always | OnFailure | Never
+  terminationGracePeriodSeconds: 30 # time between SIGTERM and SIGKILL
+  priorityClassName: high-priority
+  imagePullSecrets:
+    - name: registry-creds # see config/secret.yaml (dockerconfigjson)
+  hostNetwork: false
+  shareProcessNamespace: false
+  enableServiceLinks: false # skip legacy SERVICE_HOST env vars
+  dnsPolicy: ClusterFirst # ClusterFirst | Default | ClusterFirstWithHostNet | None
+  dnsConfig:
+    options:
+      - name: ndots
+        value: "2"
+  hostAliases: # entries added to /etc/hosts
+    - ip: 10.0.0.10
+      hostnames: ["legacy.internal"]
+
+  # ---- Pod-level security ----
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10001
+    runAsGroup: 10001
+    fsGroup: 10001 # group ownership applied to supported volumes
+    fsGroupChangePolicy: OnRootMismatch # skip recursive chown when already correct
+    supplementalGroups: [20000]
+    seccompProfile:
+      type: RuntimeDefault
+    sysctls: # only "safe" sysctls unless allowed by kubelet
+      - name: net.ipv4.ip_local_port_range
+        value: "32768 60999"
+
+  # ---- Scheduling ----
+  nodeSelector:
+    kubernetes.io/os: linux
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: kubernetes.io/arch
+                operator: In
+                values: [amd64, arm64]
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            topologyKey: kubernetes.io/hostname
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: pod-full
+  tolerations:
+    - key: dedicated
+      operator: Equal
+      value: web
+      effect: NoSchedule
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway # or DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: pod-full
+
+  # ---- Init containers: run to completion, in order, before app containers ----
+  initContainers:
+    - name: wait-for-db
+      image: busybox:1.36
+      command: ["sh", "-c", "until nc -z db.example.svc 5432; do sleep 2; done"]
+      securityContext: &restricted # YAML anchor reused below
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop: ["ALL"]
+    # Native sidecar (stable in 1.33, beta/on by default in 1.29+):
+    # an init container with restartPolicy Always keeps running alongside the app.
+    - name: log-shipper
+      image: busybox:1.36
+      restartPolicy: Always
+      command: ["sh", "-c", "tail -F /var/log/app/app.log"]
+      volumeMounts:
+        - name: logs
+          mountPath: /var/log/app
+          readOnly: true
+      securityContext: *restricted
+
+  containers:
+    - name: app
+      image: registry.example.com/app:1.2.3 # prefer a pinned tag or @sha256 digest
+      imagePullPolicy: IfNotPresent # Always | IfNotPresent | Never
+      command: ["/app/server"] # overrides image ENTRYPOINT
+      args: ["--port=8080", "--log-level=info"] # overrides image CMD
+      workingDir: /app
+      ports:
+        - name: http # referenced by probes and Services
+          containerPort: 8080
+          protocol: TCP
+      env:
+        - name: LOG_FORMAT
+          value: json
+        - name: POD_NAME # downward API: pod fields
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: CPU_LIMIT # downward API: container resources
+          valueFrom:
+            resourceFieldRef:
+              containerName: app
+              resource: limits.cpu
+        - name: APP_MODE # single key from ConfigMap
+          valueFrom:
+            configMapKeyRef:
+              name: app-config
+              key: mode
+              optional: true
+        - name: DB_PASSWORD # single key from Secret
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: password
+      envFrom: # all keys of a ConfigMap / Secret as env vars
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: db-credentials
+          prefix: DB_ # optional prefix for each key
+      resources:
+        requests: # used for scheduling; guaranteed
+          cpu: 250m
+          memory: 256Mi
+          ephemeral-storage: 500Mi
+        limits: # enforced; exceeding memory -> OOMKilled, CPU -> throttled
+          memory: 512Mi
+          ephemeral-storage: 1Gi
+      securityContext:
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true # mount writable emptyDirs where needed
+        runAsNonRoot: true
+        capabilities:
+          drop: ["ALL"]
+          add: ["NET_BIND_SERVICE"] # only add what is required
+        seccompProfile:
+          type: RuntimeDefault
+      # Probes: startup gates the other two until it succeeds.
+      startupProbe:
+        httpGet: {path: /healthz, port: http}
+        periodSeconds: 5
+        failureThreshold: 30 # up to 150s to start
+      livenessProbe: # failure -> container restarted
+        httpGet:
+          path: /healthz
+          port: http
+        initialDelaySeconds: 0
+        periodSeconds: 10
+        timeoutSeconds: 1
+        failureThreshold: 3
+      readinessProbe: # failure -> removed from Service endpoints
+        httpGet:
+          path: /ready
+          port: http
+          scheme: HTTP
+        periodSeconds: 5
+        successThreshold: 1
+      lifecycle:
+        postStart:
+          exec:
+            command: ["sh", "-c", "echo started > /tmp/started"]
+        preStop: # runs before SIGTERM; good for connection draining
+          sleep:
+            seconds: 5
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: FallbackToLogsOnError
+      volumeMounts:
+        - name: config # mount whole configMap volume
+          mountPath: /etc/app
+          readOnly: true
+        - name: config # mount a single key as a file via subPath
+          mountPath: /etc/app-extra/extra.conf
+          subPath: extra.conf # note: subPath mounts do not auto-update
+          readOnly: true
+        - name: secret-vol
+          mountPath: /etc/secret
+          readOnly: true
+        - name: logs
+          mountPath: /var/log/app
+        - name: tmp
+          mountPath: /tmp
+        - name: data
+          mountPath: /data
+        - name: podinfo
+          mountPath: /etc/podinfo
+    - name: second-container # extra containers share network and volumes
+      image: busybox:1.36
+      command: ["sleep", "infinity"]
+      securityContext: *restricted
+
+  # ---- Volumes: declared once, mounted per-container ----
+  volumes:
+    - name: config
+      configMap:
+        name: app-config
+        defaultMode: 0444
+        items: # optional: project only selected keys
+          - key: extra.conf
+            path: extra.conf
+    - name: secret-vol
+      secret:
+        secretName: db-credentials
+        defaultMode: 0400
+    - name: logs
+      emptyDir: {} # scratch space, deleted with the pod
+    - name: tmp
+      emptyDir:
+        medium: Memory # tmpfs, counts against memory limit
+        sizeLimit: 64Mi
+    - name: data
+      persistentVolumeClaim:
+        claimName: data-pvc # see storage/persistentvolumeclaim.yaml
+    - name: podinfo
+      downwardAPI: # expose pod metadata as files
+        items:
+          - path: labels
+            fieldRef:
+              fieldPath: metadata.labels
+    # Other volume types: see snippets/volumes.yaml

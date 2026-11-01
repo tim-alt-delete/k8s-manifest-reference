@@ -1,0 +1,91 @@
+# Reference for pod volume types. A complete Pod so it validates; copy the
+# `volumes` entry you need and its matching `volumeMounts` entry.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-types
+  namespace: example
+spec:
+  containers:
+    - name: app
+      image: busybox:1.36
+      command: ["sleep", "infinity"]
+      volumeMounts:
+        - {name: scratch, mountPath: /scratch}
+        - {name: cfg, mountPath: /cfg, readOnly: true}
+        - {name: sec, mountPath: /sec, readOnly: true}
+        - {name: proj, mountPath: /proj, readOnly: true}
+        - {name: info, mountPath: /info, readOnly: true}
+        - {name: pvc, mountPath: /pvc}
+        - {name: host, mountPath: /host, readOnly: true}
+        - {name: eph, mountPath: /eph}
+        - {name: img, mountPath: /img, readOnly: true}
+        - {name: nfsvol, mountPath: /nfs}
+  volumes:
+    - name: scratch # emptyDir: pod-lifetime scratch space
+      emptyDir:
+        sizeLimit: 1Gi
+    - name: cfg # configMap: keys become files
+      configMap:
+        name: app-config
+        optional: true
+    - name: sec # secret: keys become files (tmpfs-backed)
+      secret:
+        secretName: db-credentials
+        optional: true
+    - name: proj # projected: merge several sources into one directory
+      projected:
+        defaultMode: 0444
+        sources:
+          - configMap:
+              name: app-config
+              optional: true
+          - secret:
+              name: db-credentials
+              optional: true
+          - serviceAccountToken: # short-lived, audience-bound token
+              audience: api.example.com
+              expirationSeconds: 3600
+              path: token
+          - downwardAPI:
+              items:
+                - path: pod-name
+                  fieldRef: {fieldPath: metadata.name}
+    - name: info # downwardAPI: pod/container fields as files
+      downwardAPI:
+        items:
+          - path: annotations
+            fieldRef: {fieldPath: metadata.annotations}
+          - path: cpu-limit
+            resourceFieldRef:
+              containerName: app
+              resource: limits.cpu
+    - name: pvc # persistentVolumeClaim: durable storage
+      persistentVolumeClaim:
+        claimName: data-pvc
+        readOnly: false
+    - name: host # hostPath: node filesystem; security risk, avoid in apps
+      hostPath:
+        path: /etc/hostname
+        type: File # "", Directory, DirectoryOrCreate, File, FileOrCreate, Socket, ...
+    - name: eph # generic ephemeral: PVC created and deleted with the pod
+      ephemeral:
+        volumeClaimTemplate:
+          metadata:
+            labels:
+              type: scratch
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: fast-ssd
+            resources:
+              requests:
+                storage: 5Gi
+    - name: img # image volume: mount an OCI image/artifact read-only (alpha 1.31 / beta 1.33)
+      image:
+        reference: registry.example.com/data:1.0
+        pullPolicy: IfNotPresent
+    - name: nfsvol # in-tree NFS (still supported)
+      nfs:
+        server: nfs.example.internal
+        path: /exports/shared
+        readOnly: false

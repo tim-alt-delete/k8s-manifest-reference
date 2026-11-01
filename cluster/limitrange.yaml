@@ -1,0 +1,32 @@
+# LimitRange: per-object defaults and min/max in a namespace.
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: default-limits
+  namespace: example
+spec:
+  limits:
+    - type: Container
+      default: # applied as limits when a container sets none
+        cpu: 500m
+        memory: 512Mi
+      defaultRequest: # applied as requests when a container sets none
+        cpu: 100m
+        memory: 128Mi
+      min:
+        cpu: 50m
+        memory: 64Mi
+      max:
+        cpu: "2"
+        memory: 2Gi
+      maxLimitRequestRatio: # limit/request ceiling
+        cpu: "10"
+    - type: Pod
+      max:
+        cpu: "4"
+        memory: 4Gi
+    - type: PersistentVolumeClaim
+      min:
+        storage: 1Gi
+      max:
+        storage: 50Gi

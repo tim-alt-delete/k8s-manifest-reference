@@ -1,0 +1,30 @@
+# ReplicaSet: keeps N identical pods running. Usually created by a Deployment;
+# use a Deployment instead unless you need custom update orchestration.
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: frontend
+  namespace: example
+  labels:
+    app.kubernetes.io/name: frontend
+spec:
+  replicas: 3
+  minReadySeconds: 0
+  selector: # supports matchLabels and matchExpressions
+    matchLabels:
+      app.kubernetes.io/name: frontend
+    matchExpressions:
+      - key: tier
+        operator: In # In | NotIn | Exists | DoesNotExist
+        values: [frontend]
+  template: # pod template; labels must satisfy the selector
+    metadata:
+      labels:
+        app.kubernetes.io/name: frontend
+        tier: frontend
+    spec:
+      containers:
+        - name: app
+          image: nginx:1.27
+          ports:
+            - containerPort: 80

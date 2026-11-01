@@ -1,0 +1,50 @@
+# Every probe handler type and lifecycle hook, in one validating Pod.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: probe-types
+  namespace: example
+spec:
+  terminationGracePeriodSeconds: 45 # should exceed preStop + shutdown time
+  containers:
+    - name: http
+      image: nginx:1.27
+      ports:
+        - {name: http, containerPort: 80}
+      startupProbe: # runs first; liveness/readiness wait for it
+        httpGet:
+          path: /
+          port: http
+          httpHeaders:
+            - {name: X-Probe, value: startup}
+        periodSeconds: 2
+        failureThreshold: 30
+      readinessProbe: # gate traffic
+        httpGet: {path: /, port: 80, scheme: HTTP}
+        periodSeconds: 5
+      livenessProbe: # restart on failure
+        tcpSocket: {port: http}
+        periodSeconds: 10
+        timeoutSeconds: 2
+        failureThreshold: 3
+        terminationGracePeriodSeconds: 10 # per-probe override on kill
+      lifecycle:
+        preStop:
+          exec:
+            command: ["sh", "-c", "nginx -s quit; sleep 5"]
+    - name: exec
+      image: busybox:1.36
+      command: ["sh", "-c", "touch /tmp/healthy; sleep infinity"]
+      livenessProbe:
+        exec:
+          command: ["cat", "/tmp/healthy"] # exit 0 = healthy
+        initialDelaySeconds: 5
+        periodSeconds: 5
+    - name: grpc
+      image: registry.example.com/grpc-app:1.0
+      ports:
+        - {name: grpc, containerPort: 9090}
+      readinessProbe:
+        grpc: # implements gRPC health checking protocol
+          port: 9090
+          service: my.service.v1 # optional

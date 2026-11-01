@@ -1,0 +1,64 @@
+# PersistentVolumeClaim: a request for storage, mounted by pods via `volumes[].persistentVolumeClaim`.
+# --- Dynamically provisioned ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data-pvc
+  namespace: example
+spec:
+  accessModes: # RWO: one node | ROX: many nodes read-only | RWX: many nodes rw | RWOP: single pod
+    - ReadWriteOnce
+  storageClassName: fast-ssd # omit for default class; "" disables dynamic provisioning
+  volumeMode: Filesystem # or Block (raw device, use volumeDevices in container)
+  resources:
+    requests:
+      storage: 10Gi # can be grown if the class allows expansion
+  # selector: # bind only to PVs matching labels (static provisioning)
+  #   matchLabels:
+  #     tier: gold
+  # volumeName: nfs-pv # bind to a specific PV
+---
+# --- Statically bound to nfs-pv ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-pvc
+  namespace: example
+spec:
+  accessModes: ["ReadWriteMany"]
+  storageClassName: manual
+  volumeName: nfs-pv
+  resources:
+    requests:
+      storage: 50Gi
+---
+# --- Restore from a VolumeSnapshot (snapshot CRDs/controller must be installed) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: restored-pvc
+  namespace: example
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 10Gi
+  dataSource:
+    apiGroup: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: data-snap
+---
+# --- Raw block volume (mount with `volumeDevices` in the container, not volumeMounts) ---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: block-pvc
+  namespace: example
+spec:
+  accessModes: ["ReadWriteOnce"]
+  volumeMode: Block
+  storageClassName: fast-ssd
+  resources:
+    requests:
+      storage: 20Gi

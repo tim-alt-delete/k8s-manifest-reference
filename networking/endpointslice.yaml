@@ -1,0 +1,21 @@
+# EndpointSlice: backends for a Service. Normally auto-created from selectors;
+# write manually for selector-less Services (e.g. legacy-backend).
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: legacy-backend-1
+  namespace: example
+  labels:
+    kubernetes.io/service-name: legacy-backend # links slice to Service
+addressType: IPv4 # IPv4 | IPv6 | FQDN
+ports:
+  - name: ""
+    protocol: TCP
+    port: 8080
+endpoints:
+  - addresses: ["10.1.2.3"]
+    conditions:
+      ready: true
+  - addresses: ["10.1.2.4"]
+    conditions:
+      ready: true

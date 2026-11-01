@@ -1,0 +1,72 @@
+# StatefulSet: stable network identity (pod-0, pod-1...) and per-pod storage.
+# Pods are created in order and keep their PVCs across restarts.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  namespace: example
+spec:
+  serviceName: db-headless # headless Service providing DNS: db-0.db-headless.example.svc
+  replicas: 3
+  podManagementPolicy: OrderedReady # or Parallel (start/stop all at once)
+  minReadySeconds: 5
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: db
+  updateStrategy:
+    type: RollingUpdate # or OnDelete (manual pod deletion triggers update)
+    rollingUpdate:
+      partition: 0 # only pods with ordinal >= partition are updated (canary)
+      maxUnavailable: 1 # pods updated at once; may require the MaxUnavailableStatefulSet feature gate
+  persistentVolumeClaimRetentionPolicy: # stable in 1.32
+    whenDeleted: Retain # Retain | Delete: StatefulSet deleted
+    whenScaled: Retain # Retain | Delete: replicas reduced
+  ordinals:
+    start: 0 # first ordinal (stable in 1.31)
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db
+    spec:
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: postgres
+          image: postgres:16
+          ports:
+            - name: pg
+              containerPort: 5432
+          env:
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata # subdirectory avoids lost+found issue
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: db-credentials, key: password}
+          resources:
+            requests: {cpu: 250m, memory: 512Mi}
+            limits: {memory: 1Gi}
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: data # matches volumeClaimTemplates name
+              mountPath: /var/lib/postgresql/data
+  volumeClaimTemplates: # one PVC per pod: data-db-0, data-db-1...
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: fast-ssd
+        resources:
+          requests:
+            storage: 10Gi

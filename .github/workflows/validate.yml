@@ -1,0 +1,15 @@
+name: validate
+on:
+  push:
+  pull_request:
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+      - run: pip install yamllint
+      - run: make validate

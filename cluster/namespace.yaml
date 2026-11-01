@@ -1,0 +1,14 @@
+# Namespace: scopes names and policies. Cluster-scoped resource.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: example # DNS label; must be unique in the cluster
+  labels:
+    app.kubernetes.io/name: example
+    # Pod Security Admission (built in since 1.25). Levels: privileged | baseline | restricted
+    pod-security.kubernetes.io/enforce: restricted # reject violating pods
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted # warn client on violation
+    pod-security.kubernetes.io/audit: restricted # record in audit log
+  annotations:
+    example.com/owner: platform-team

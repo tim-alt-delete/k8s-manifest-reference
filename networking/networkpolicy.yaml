@@ -1,0 +1,81 @@
+# NetworkPolicy: pod-level firewall. Needs a CNI that enforces it (Calico, Cilium...).
+# Once any policy selects a pod for a direction, all traffic in that direction
+# not explicitly allowed is denied. Policies are additive.
+# --- Default deny all ingress and egress in the namespace ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: example
+spec:
+  podSelector: {} # empty = every pod in namespace
+  policyTypes: [Ingress, Egress]
+---
+# --- Allow DNS egress for all pods (needed after default-deny egress) ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+  namespace: example
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# --- Typical app policy combining the selector types ---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: web-policy
+  namespace: example
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: web
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from: # entries in `from` are OR'ed
+        - podSelector: # pods in same namespace
+            matchLabels:
+              app.kubernetes.io/name: frontend
+        - namespaceSelector: # any pod in namespaces with this label
+            matchLabels:
+              team: platform
+        - namespaceSelector: # AND: pods labeled X in namespaces labeled Y (single list item)
+            matchLabels:
+              env: monitoring
+          podSelector:
+            matchLabels:
+              app: prometheus
+        - ipBlock: # external CIDR
+            cidr: 203.0.113.0/24
+            except: ["203.0.113.128/25"]
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: db
+      ports:
+        - protocol: TCP
+          port: 5432
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: ["10.0.0.0/8"] # internet but not private ranges
+      ports:
+        - protocol: TCP
+          port: 443
+          endPort: 443 # endPort makes a range: port..endPort

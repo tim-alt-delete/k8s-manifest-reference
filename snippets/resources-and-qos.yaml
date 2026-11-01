@@ -1,0 +1,39 @@
+# QoS classes are derived from requests/limits. One Pod per class.
+# Guaranteed: every container has requests == limits for cpu AND memory.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-guaranteed
+  namespace: example
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      resources:
+        requests: {cpu: 500m, memory: 256Mi}
+        limits: {cpu: 500m, memory: 256Mi}
+---
+# Burstable: at least one request/limit set, but not Guaranteed. Evicted after BestEffort.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-burstable
+  namespace: example
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27
+      resources:
+        requests: {cpu: 100m, memory: 128Mi}
+        limits: {memory: 512Mi} # no CPU limit: avoids throttling, common practice
+---
+# BestEffort: no requests or limits. First to be evicted; avoid for real workloads.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: qos-besteffort
+  namespace: example
+spec:
+  containers:
+    - name: app
+      image: nginx:1.27

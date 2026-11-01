@@ -1,0 +1,23 @@
+# ClusterRole: cluster-wide permissions, cluster-scoped resources, non-resource URLs,
+# or a reusable role bound per-namespace via RoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-reader
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "watch"]
+  - nonResourceURLs: ["/healthz", "/metrics"]
+    verbs: ["get"]
+---
+# Aggregated ClusterRole: rules are collected from ClusterRoles with matching labels.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: monitoring-aggregate
+aggregationRule:
+  clusterRoleSelectors:
+    - matchLabels:
+        example.com/aggregate-to-monitoring: "true"
+rules: [] # filled in by the controller

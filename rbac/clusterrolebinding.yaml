@@ -1,0 +1,13 @@
+# ClusterRoleBinding: grants a ClusterRole across the whole cluster.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-reader-binding
+subjects:
+  - kind: ServiceAccount
+    name: app-sa
+    namespace: example
+roleRef:
+  kind: ClusterRole
+  name: node-reader
+  apiGroup: rbac.authorization.k8s.io

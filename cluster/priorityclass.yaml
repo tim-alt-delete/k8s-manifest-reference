@@ -1,0 +1,10 @@
+# PriorityClass: scheduling priority and preemption. Cluster-scoped.
+# Referenced from pod spec via priorityClassName.
+apiVersion: scheduling.k8s.io/v1
+kind: PriorityClass
+metadata:
+  name: high-priority
+value: 100000 # higher = more important. >1,000,000,000 reserved for system classes
+globalDefault: false # true makes this the default for pods without a class (only one allowed)
+preemptionPolicy: PreemptLowerPriority # or Never: queue ahead but don't evict others
+description: For latency-critical services.

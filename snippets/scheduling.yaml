@@ -1,0 +1,55 @@
+# Scheduling controls beyond pod.yaml: affinity operators, tolerations, spread.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: scheduling-examples
+  namespace: example
+  labels:
+    app.kubernetes.io/name: scheduling-examples
+spec:
+  nodeName: "" # pin directly to a node, bypassing the scheduler (avoid)
+  schedulerName: default-scheduler
+  runtimeClassName: null # e.g. gvisor, kata
+  nodeSelector:
+    disktype: ssd
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution: # hard
+        nodeSelectorTerms:
+          - matchExpressions: # AND within a term; terms are OR'ed
+              - {key: topology.kubernetes.io/zone, operator: In, values: [zone-a, zone-b]}
+              - {key: gpu, operator: DoesNotExist}
+              - {key: cpu-count, operator: Gt, values: ["8"]} # Gt / Lt for integers
+      preferredDuringSchedulingIgnoredDuringExecution: # soft
+        - weight: 50 # 1-100
+          preference:
+            matchExpressions:
+              - {key: node.kubernetes.io/instance-type, operator: In, values: [m5.large]}
+    podAffinity: # co-locate with another workload
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: topology.kubernetes.io/zone
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: cache
+          namespaceSelector: {} # all namespaces
+    podAntiAffinity: # spread away from same app
+      requiredDuringSchedulingIgnoredDuringExecution:
+        - topologyKey: kubernetes.io/hostname
+          labelSelector:
+            matchExpressions:
+              - {key: app.kubernetes.io/name, operator: In, values: [scheduling-examples]}
+  tolerations:
+    - {key: dedicated, operator: Equal, value: gpu, effect: NoSchedule}
+    - {key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 300}
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      minDomains: 3 # only with DoNotSchedule
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/name: scheduling-examples
+      matchLabelKeys: [pod-template-hash] # compute spread per Deployment revision
+  containers:
+    - name: app
+      image: nginx:1.27

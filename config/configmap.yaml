@@ -1,0 +1,16 @@
+# ConfigMap: non-confidential configuration. Max 1MiB.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: example
+data: # UTF-8 strings
+  mode: production # consumed as env var (configMapKeyRef / envFrom)
+  extra.conf: | # consumed as a file when mounted as a volume
+    key=value
+    other=thing
+  app.properties: |
+    log.level=info
+binaryData: # base64 for non-UTF-8 content
+  blob.bin: AAECAw==
+immutable: false # true: cannot be changed (better perf, forces new name on change)

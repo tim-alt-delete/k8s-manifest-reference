@@ -1,0 +1,18 @@
+# Role: namespaced permissions (additive only; no deny rules).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: app-reader
+  namespace: example
+rules:
+  - apiGroups: [""] # "" = core group
+    resources: ["pods", "pods/log", "configmaps"] # subresources use slash
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["db-credentials"] # restrict to named objects
+    verbs: ["get"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "patch", "update"]
+  # verbs: get list watch create update patch delete deletecollection (also: impersonate, bind, escalate)

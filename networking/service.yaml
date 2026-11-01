@@ -1,0 +1,91 @@
+# Service: stable virtual IP and DNS name (<name>.<ns>.svc) load-balancing to pods matched by selector.
+# --- ClusterIP (default): internal only ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: example
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: http # required when multiple ports
+      port: 80 # service port
+      targetPort: http # pod port number or named port
+      protocol: TCP
+  sessionAffinity: None # or ClientIP
+  internalTrafficPolicy: Cluster # or Local (node-local endpoints only)
+  ipFamilyPolicy: SingleStack # SingleStack | PreferDualStack | RequireDualStack
+---
+# --- NodePort: exposes on every node's IP at a static port ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-nodeport
+  namespace: example
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - port: 80
+      targetPort: 8080
+      nodePort: 30080 # default range 30000-32767; omit to auto-assign
+  externalTrafficPolicy: Local # preserves client source IP; Cluster (default) may SNAT
+---
+# --- LoadBalancer: cloud provider external LB ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: web-lb
+  namespace: example
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: nlb # provider-specific
+spec:
+  type: LoadBalancer
+  selector:
+    app.kubernetes.io/name: web
+  ports:
+    - name: https
+      port: 443
+      targetPort: 8080
+  loadBalancerSourceRanges: ["203.0.113.0/24"] # restrict client CIDRs
+  externalTrafficPolicy: Local
+  allocateLoadBalancerNodePorts: true
+---
+# --- Headless: no virtual IP; DNS returns pod IPs. Used by StatefulSets ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: db-headless
+  namespace: example
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: db
+  publishNotReadyAddresses: true # DNS includes pods before ready (peer discovery)
+  ports:
+    - name: pg
+      port: 5432
+---
+# --- ExternalName: DNS CNAME to an external host; no proxying ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: external-db
+  namespace: example
+spec:
+  type: ExternalName
+  externalName: db.example.com
+---
+# --- Selector-less Service: you manage Endpoints/EndpointSlice yourself ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: legacy-backend
+  namespace: example
+spec:
+  ports:
+    - port: 80
+      targetPort: 8080

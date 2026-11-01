@@ -1,0 +1,14 @@
+# PodDisruptionBudget: limits voluntary disruptions (drain, upgrades) to pods.
+# Set EITHER minAvailable OR maxUnavailable, not both.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: web
+  namespace: example
+spec:
+  minAvailable: 2 # int or percentage
+  # maxUnavailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow # allow evicting not-ready pods (default IfHealthyBudget)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: web

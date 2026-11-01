@@ -1,0 +1,48 @@
+# Ingress: HTTP(S) routing to Services. Requires an ingress controller.
+# (Gateway API is the successor but uses CRDs, not covered here.)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  namespace: example
+  annotations: # controller-specific, e.g. ingress-nginx
+    nginx.ingress.kubernetes.io/proxy-body-size: 10m
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+spec:
+  ingressClassName: nginx # selects the controller (see IngressClass)
+  defaultBackend: # used when no rule matches
+    service:
+      name: web
+      port:
+        number: 80
+  tls:
+    - hosts: [www.example.com, example.com]
+      secretName: example-tls # kubernetes.io/tls Secret in same namespace
+  rules:
+    - host: www.example.com # omit for all hosts; may use wildcard *.example.com
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix # Exact | Prefix | ImplementationSpecific
+            backend:
+              service:
+                name: web
+                port:
+                  name: http # or number
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+---
+# IngressClass: binds a class name to a controller implementation. Cluster-scoped.
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: nginx
+  annotations:
+    ingressclass.kubernetes.io/is-default-class: "true"
+spec:
+  controller: k8s.io/ingress-nginx

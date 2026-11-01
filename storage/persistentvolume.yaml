@@ -1,0 +1,42 @@
+# PersistentVolume: a piece of storage. Cluster-scoped. Usually dynamically created
+# from a StorageClass; manual definition is for pre-provisioned storage.
+# --- NFS-backed static PV, reserved for a specific claim ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nfs-pv
+spec:
+  capacity:
+    storage: 50Gi
+  volumeMode: Filesystem # or Block
+  accessModes: ["ReadWriteMany"]
+  persistentVolumeReclaimPolicy: Retain # Retain | Delete | Recycle(deprecated)
+  storageClassName: manual # "" for classless
+  mountOptions: ["nfsvers=4.1"]
+  claimRef: # pre-bind to a specific PVC (optional)
+    namespace: example
+    name: shared-pvc
+  nfs:
+    server: nfs.example.internal
+    path: /exports/shared
+---
+# --- Local PV, tied to one node via nodeAffinity ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv
+spec:
+  capacity:
+    storage: 100Gi
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-storage
+  local:
+    path: /mnt/disks/ssd1
+  nodeAffinity: # required for local volumes
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [node-1]
